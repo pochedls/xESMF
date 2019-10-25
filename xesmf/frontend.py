@@ -56,8 +56,9 @@ def ds_to_ESMFgrid(ds, need_bounds=False, periodic=None, append=None):
     '''
 
     # use np.asarray(dr) instead of dr.values, so it also works for dictionary
-    lon = np.asarray(ds['lon'])
-    lat = np.asarray(ds['lat'])
+    lat_id, lon_id = get_axis_ids(ds)
+    lon = np.asarray(ds[lon_id])
+    lat = np.asarray(ds[lat_id])
     lon, lat = as_2d_mesh(lon, lat)
 
     # tranpose the arrays so they become Fortran-ordered
@@ -70,6 +71,43 @@ def ds_to_ESMFgrid(ds, need_bounds=False, periodic=None, append=None):
         add_corner(grid, lon_b.T, lat_b.T)
 
     return grid, lon.shape
+
+
+def get_axis_ids(ds):
+    '''
+    Determines whether a DataSet or DataArray has conventional latitude
+    and longitude id names and returns them. If no standard names are
+    found it returns ValueError exception.
+
+    Acceptable names include:
+        latitude:   lat, latitude
+        longitude:  lon, long, longitude
+
+    Parameters
+    ----------
+    ds : xarray DataSet or DataArray
+        Contains dimensions, e.g., ``lon``, ``lat``
+
+    Returns
+    -------
+    lat, lon : str
+
+    '''
+    # get list of coordinate dimensions
+    dims = list(ds.dims)
+    # define list of standard dimensions
+    standard_lat_dims = ['lat', 'latitude']
+    standard_lon_dims = ['lon', 'longitude', 'long']
+    # list comprehension search for standard dimensions
+    lat_id = [dname for dname in dims if dname.lower() in standard_lat_dims]
+    lon_id = [dname for dname in dims if dname.lower() in standard_lon_dims]
+    if len(lat_id) == 1 & len(lon_id) == 1:
+        return lat_id[0], lon_id[0]
+    else:
+        raise AttributeError('One standard latitude dimension (e.g., lat, ' +
+                             'latitude) and longitude dimension (e.g., ' +
+                             'lon, long, longitude) should be provided')
+
 
 
 class Regridder(object):
@@ -146,12 +184,13 @@ class Regridder(object):
                                                    )
 
         # record output grid and metadata
-        self._lon_out = np.asarray(ds_out['lon'])
-        self._lat_out = np.asarray(ds_out['lat'])
+        lat_id, lon_id = get_axis_ids(ds_out)
+        self._lon_out = np.asarray(ds_out[lon_id])
+        self._lat_out = np.asarray(ds_out[lat_id])
 
         if self._lon_out.ndim == 2:
             try:
-                self.lon_dim = self.lat_dim = ds_out['lon'].dims
+                self.lon_dim = self.lat_dim = ds_out[lat_id].dims
             except:
                 self.lon_dim = self.lat_dim = ('y', 'x')
 
@@ -159,11 +198,11 @@ class Regridder(object):
 
         elif self._lon_out.ndim == 1:
             try:
-                self.lon_dim, = ds_out['lon'].dims
-                self.lat_dim, = ds_out['lat'].dims
+                self.lon_dim, = ds_out[lon_id].dims
+                self.lat_dim, = ds_out[lat_id].dims
             except:
-                self.lon_dim = 'lon'
-                self.lat_dim = 'lat'
+                self.lon_dim = lon_id
+                self.lat_dim = lat_id
 
             self.out_horiz_dims = (self.lat_dim, self.lon_dim)
 
